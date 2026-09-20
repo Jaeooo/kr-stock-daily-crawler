@@ -1,6 +1,16 @@
 @echo off
 cd /d "%~dp0"
 
+if "%~1"=="_child" goto :body
+
+call "%~f0" _child > "%~dp0setup_log.txt" 2>&1
+type "%~dp0setup_log.txt"
+echo.
+echo (Full log saved to setup_log.txt)
+pause
+exit /b
+
+:body
 set PY_VER=3.12.4
 set PYTHON_CMD=python
 
@@ -13,7 +23,6 @@ powershell -Command "Invoke-WebRequest -Uri https://www.python.org/ftp/python/%P
 
 if not exist "%PY_INSTALLER%" (
     echo Download failed. Check your internet connection, or install Python manually from https://www.python.org/downloads/
-    pause
     exit /b 1
 )
 
@@ -24,7 +33,6 @@ del "%PY_INSTALLER%"
 set PYTHON_CMD=%LocalAppData%\Programs\Python\Python312\python.exe
 if not exist "%PYTHON_CMD%" (
     echo Python was installed but could not be found at the expected path. Close this window and run setup.bat again.
-    pause
     exit /b 0
 )
 echo Python installed.
@@ -33,4 +41,3 @@ echo Python installed.
 "%PYTHON_CMD%" -m pip install -r src\requirements.txt
 echo.
 echo Setup complete. From now on, just double-click run_gui.bat to run the program.
-pause
