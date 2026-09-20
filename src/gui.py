@@ -18,6 +18,7 @@ from tkinter import ttk, messagebox
 from tkinter.scrolledtext import ScrolledText
 
 import build_report
+import updater
 
 _DONE = object()
 POLL_INTERVAL_MS = 100
@@ -67,6 +68,7 @@ class App:
 
         self.log_queue: "queue.Queue" = queue.Queue()
         self.date_queue: "queue.Queue" = queue.Queue()
+        self.update_queue: "queue.Queue" = queue.Queue()
         self._last_output_dir: Path | None = None
         self._date_buttons: list[ttk.Button] = []
 
@@ -77,6 +79,9 @@ class App:
 
         self.refresh_button = ttk.Button(date_frame, text="새로고침", command=self._start_date_fetch)
         self.refresh_button.pack(side="right")
+
+        self.update_button = ttk.Button(date_frame, text="업데이트 확인", command=self._start_update_check)
+        self.update_button.pack(side="right", padx=(0, 6))
 
         self.date_buttons_frame = ttk.Frame(root, padding=(10, 0))
         self.date_buttons_frame.pack(fill="x")
@@ -92,10 +97,19 @@ class App:
 
         self._start_date_fetch()
 
+    # ---------- 공용 ----------
+
+    def _set_busy(self, busy: bool) -> None:
+        state = DISABLED if busy else NORMAL
+        self.refresh_button.configure(state=state)
+        self.update_button.configure(state=state)
+        for btn in self._date_buttons:
+            btn.configure(state=state)
+
     # ---------- 날짜 목록 조회 ----------
 
     def _start_date_fetch(self) -> None:
-        self.refresh_button.configure(state=DISABLED)
+        self._set_busy(True)
         self.status_var.set("사용 가능한 날짜 불러오는 중...")
         for btn in self._date_buttons:
             btn.destroy()
@@ -119,18 +133,13 @@ class App:
             self.root.after(POLL_INTERVAL_MS, self._poll_date_queue)
             return
 
-        self.refresh_button.configure(state=NORMAL)
-
         if status == "error":
+            self._set_busy(False)
             self.status_var.set("날짜 조회 실패")
             messagebox.showerror("오류", f"사용 가능한 날짜를 못 불러왔어:\n{payload}")
             return
 
         dates: list[date] = payload
-        if not dates:
-            self.status_var.set("사용 가능한 날짜가 없어")
-            return
-
         for d in dates:
             btn = ttk.Button(
                 self.date_buttons_frame,
@@ -140,7 +149,8 @@ class App:
             btn.pack(side="left", padx=(0, 6))
             self._date_buttons.append(btn)
 
-        self.status_var.set("날짜를 선택해줘")
+        self._set_busy(False)
+        self.status_var.set("날짜를 선택해줘" if dates else "사용 가능한 날짜가 없어")
 
     # ---------- 실행 ----------
 
@@ -151,9 +161,7 @@ class App:
         self.log_widget.configure(state=DISABLED)
 
     def _on_run(self, target: date) -> None:
-        for btn in self._date_buttons:
-            btn.configure(state=DISABLED)
-        self.refresh_button.configure(state=DISABLED)
+        self._set_busy(True)
         self.open_output_button.configure(state=DISABLED)
         self.status_var.set(f"{target.isoformat()} 데이터 수집 중...")
         self.log_widget.configure(state=NORMAL)
@@ -199,9 +207,7 @@ class App:
         self.root.after(POLL_INTERVAL_MS, self._poll_log_queue)
 
     def _on_done(self, out_path: Path | None, error: Exception | None) -> None:
-        for btn in self._date_buttons:
-            btn.configure(state=NORMAL)
-        self.refresh_button.configure(state=NORMAL)
+        self._set_busy(False)
         if error is not None:
             self.status_var.set("실패")
             messagebox.showerror("오류", f"실행 중 오류가 발생했어:\n{error}")
@@ -210,6 +216,40 @@ class App:
         self.status_var.set(f"완료: {out_path}")
         self.open_output_button.configure(state=NORMAL)
         self._last_output_dir = out_path.parent if out_path else None
+
+    # ---------- 업데이트 확인 ----------
+
+    def _start_update_check(self) -> None:
+        self._set_busy(True)
+        self.status_var.set("업데이트 확인 중...")
+
+        thread = threading.Thread(target=self._update_worker, daemon=True)
+        thread.start()
+        self.root.after(POLL_INTERVAL_MS, self._poll_update_queue)
+
+    def _update_worker(self) -> None:
+        try:
+            message = updater.check_and_update()
+            self.update_queue.put(("ok", message))
+        except Exception as e:  # noqa: BLE001
+            self.update_queue.put(("error", e))
+
+    def _poll_update_queue(self) -> None:
+        try:
+            status, payload = self.update_queue.get_nowait()
+        except queue.Empty:
+            self.root.after(POLL_INTERVAL_MS, self._poll_update_queue)
+            return
+
+        self._set_busy(False)
+
+        if status == "error":
+            self.status_var.set("업데이트 확인 실패")
+            messagebox.showerror("오류", f"업데이트 확인 중 문제가 생겼어:\n{payload}")
+            return
+
+        self.status_var.set(payload)
+        messagebox.showinfo("업데이트", payload)
 
     def _open_output_dir(self) -> None:
         if not self._last_output_dir:
