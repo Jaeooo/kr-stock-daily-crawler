@@ -26,7 +26,7 @@ PROJECT_ROOT = SRC_DIR.parent
 VERSION_FILE = PROJECT_ROOT / ".update_version"
 
 # 업데이트 때 통째로 교체할 경로 (전부 코드/실행 스크립트 — 사용자 데이터 아님)
-UPDATE_PATHS = ["src", "run_gui.bat", "setup.bat", "automation"]
+UPDATE_PATHS = ["src", "run_gui.bat", "setup.bat", "update.bat", "automation"]
 
 REQUEST_TIMEOUT = 15
 
