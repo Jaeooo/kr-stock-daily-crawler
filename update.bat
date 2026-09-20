@@ -1,13 +1,13 @@
 @echo off
 cd /d "%~dp0"
+if not exist "logs" mkdir "logs"
 
-if "%~1"=="_child" goto :body
-
-call "%~f0" _child > "%~dp0update_log.txt" 2>&1
-type "%~dp0update_log.txt"
+call :main > "%~dp0logs\update_log.txt" 2>&1
+type "%~dp0logs\update_log.txt"
 echo.
 pause
 exit /b
 
-:body
+:main
 python src\update_cli.py
+exit /b

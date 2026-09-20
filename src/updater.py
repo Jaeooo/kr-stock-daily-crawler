@@ -23,7 +23,8 @@ ZIP_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/archive/refs/heads/{BRAN
 
 SRC_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SRC_DIR.parent
-VERSION_FILE = PROJECT_ROOT / ".update_version"
+LOGS_DIR = PROJECT_ROOT / "logs"
+VERSION_FILE = LOGS_DIR / ".update_version"
 
 # 업데이트 때 통째로 교체할 경로 (전부 코드/실행 스크립트 — 사용자 데이터 아님)
 UPDATE_PATHS = ["src", "run_gui.bat", "setup.bat", "update.bat", "automation"]
@@ -48,6 +49,7 @@ def get_local_version() -> str | None:
 
 
 def set_local_version(sha: str) -> None:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
     VERSION_FILE.write_text(sha, encoding="utf-8")
 
 

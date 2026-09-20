@@ -3,7 +3,4 @@ __pycache__/
 .DS_Store
 ~$*
 output/
-.update_version
-setup_log.txt
-gui_log.txt
-update_log.txt
+logs/
