@@ -79,16 +79,22 @@ def _strip_percent(value: str) -> str:
 
 def _fetch_row(code: str, bizdate: str) -> tuple[str, str, str, str, str]:
     """(종가, 기관, 외국인, 외국인소진율, 거래량) 튜플을 반환. 실패 시 전부 '-'."""
-    deal_trend = naver_client.fetch_deal_trend(code)
+    integration_data = naver_client.fetch_integration(code)
+    deal_trend = integration_data.get("dealTrendInfos", [])
     row = naver_client.find_row_for_date(deal_trend, bizdate)
     if row is None:
         return (PLACEHOLDER,) * 5
+
+    hold_ratio = _strip_percent(row.get("foreignerHoldRatio", PLACEHOLDER))
+    exhaustion_ratio = naver_client.true_exhaustion_ratio(integration_data, hold_ratio)
+    if exhaustion_ratio is None:
+        exhaustion_ratio = hold_ratio  # 한도 역산이 안 되면 보유율로 대체
 
     return (
         row.get("closePrice", PLACEHOLDER),
         row.get("organPureBuyQuant", PLACEHOLDER),
         row.get("foreignerPureBuyQuant", PLACEHOLDER),
-        _strip_percent(row.get("foreignerHoldRatio", PLACEHOLDER)),
+        exhaustion_ratio,
         row.get("accumulatedTradingVolume", PLACEHOLDER),
     )
 
