@@ -100,6 +100,15 @@ def apply_update(sha: str) -> None:
     set_local_version(sha)
 
 
+def is_update_available() -> bool:
+    """다운로드/적용 없이 새 버전이 있는지만 가볍게 확인한다. 실패 시 False."""
+    try:
+        latest_sha = get_remote_latest_sha()
+    except Exception:  # noqa: BLE001 - 네트워크 실패는 "업데이트 없음"과 동일하게 조용히 처리
+        return False
+    return get_local_version() != latest_sha
+
+
 def check_and_update() -> str:
     """업데이트 확인 후 있으면 바로 적용한다. 사용자에게 보여줄 결과 메시지를 반환한다."""
     latest_sha = get_remote_latest_sha()

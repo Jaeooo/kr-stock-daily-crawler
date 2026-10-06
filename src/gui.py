@@ -23,6 +23,8 @@ import updater
 _DONE = object()
 POLL_INTERVAL_MS = 100
 WEEKDAY_KOR = ["월", "화", "수", "목", "금", "토", "일"]
+UPDATE_BUTTON_DEFAULT_TEXT = "업데이트 확인"
+UPDATE_BUTTON_AVAILABLE_TEXT = "🔵 업데이트 있음"
 
 
 class _QueueStream:
@@ -69,6 +71,7 @@ class App:
         self.log_queue: "queue.Queue" = queue.Queue()
         self.date_queue: "queue.Queue" = queue.Queue()
         self.update_queue: "queue.Queue" = queue.Queue()
+        self.update_badge_queue: "queue.Queue" = queue.Queue()
         self._last_output_dir: Path | None = None
         self._date_buttons: list[ttk.Button] = []
 
@@ -99,6 +102,7 @@ class App:
         self.open_output_button.pack(pady=(0, 10))
 
         self._start_date_fetch()
+        self._start_update_badge_check()
 
     # ---------- 공용 ----------
 
@@ -293,8 +297,32 @@ class App:
             messagebox.showerror("오류", f"업데이트 확인 중 문제가 생겼어:\n{payload}")
             return
 
+        self.update_button.configure(text=UPDATE_BUTTON_DEFAULT_TEXT)
         self.status_var.set(payload)
         messagebox.showinfo("업데이트", payload)
+
+    def _start_update_badge_check(self) -> None:
+        """앱 시작할 때 조용히 새 버전 있는지만 확인한다 (다운로드/적용은 안 함, UI 안 막음)."""
+        thread = threading.Thread(target=self._update_badge_worker, daemon=True)
+        thread.start()
+        self.root.after(POLL_INTERVAL_MS, self._poll_update_badge_queue)
+
+    def _update_badge_worker(self) -> None:
+        try:
+            available = updater.is_update_available()
+        except Exception:  # noqa: BLE001 - 배지 체크는 조용히 실패해도 됨
+            available = False
+        self.update_badge_queue.put(available)
+
+    def _poll_update_badge_queue(self) -> None:
+        try:
+            available = self.update_badge_queue.get_nowait()
+        except queue.Empty:
+            self.root.after(POLL_INTERVAL_MS, self._poll_update_badge_queue)
+            return
+
+        if available:
+            self.update_button.configure(text=UPDATE_BUTTON_AVAILABLE_TEXT)
 
     def _open_output_dir(self) -> None:
         if not self._last_output_dir:
