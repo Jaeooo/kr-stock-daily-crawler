@@ -99,7 +99,35 @@ def _fetch_row(code: str, bizdate: str) -> tuple[str, str, str, str, str]:
     )
 
 
-def build_workbook(tickers: list[tuple[str, str]], target: date) -> tuple[openpyxl.Workbook, list[str]]:
+def _fetch_row_extended(code: str, bizdate: str) -> tuple[str, str, str, str, str]:
+    """최근 5거래일보다 오래된 날짜용. 기관/외국인 순매매량 소스가 없어서 '-'로 둔다."""
+    integration_data = naver_client.fetch_integration(code)  # 한도 역산용(오늘자 기준)
+    history = naver_client.fetch_long_foreign_history(code)
+    row = next((r for r in history if r.get("localDate") == bizdate), None)
+    if row is None:
+        return (PLACEHOLDER,) * 5
+
+    hold = row.get("foreignRetentionRate")
+    hold_str = f"{hold:.2f}" if isinstance(hold, (int, float)) else PLACEHOLDER
+    exhaustion_ratio = PLACEHOLDER
+    if hold_str != PLACEHOLDER:
+        exhaustion_ratio = naver_client.true_exhaustion_ratio(integration_data, hold_str)
+        if exhaustion_ratio is None:
+            exhaustion_ratio = hold_str
+
+    close_price = row.get("closePrice")
+    volume = row.get("accumulatedTradingVolume")
+
+    return (
+        f"{close_price:,.0f}" if isinstance(close_price, (int, float)) else PLACEHOLDER,
+        PLACEHOLDER,  # 기관 - 장기 이력 소스엔 없음
+        PLACEHOLDER,  # 외국인 순매매량 - 장기 이력 소스엔 없음
+        exhaustion_ratio,
+        f"{volume:,}" if isinstance(volume, (int, float)) else PLACEHOLDER,
+    )
+
+
+def build_workbook(tickers: list[tuple[str, str]], target: date, extended: bool = False) -> tuple[openpyxl.Workbook, list[str]]:
     bizdate = target.strftime("%Y%m%d")
     date_label = f"{target.month}/{target.day}"
 
@@ -114,10 +142,12 @@ def build_workbook(tickers: list[tuple[str, str]], target: date) -> tuple[openpy
         ws.column_dimensions[col].width = width
     ws.column_dimensions["H"].width = 10
 
+    fetch_fn = _fetch_row_extended if extended else _fetch_row
+
     results: dict[int, tuple[str, str, str, str, str]] = {}
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
-            executor.submit(_fetch_row, code, bizdate): idx
+            executor.submit(fetch_fn, code, bizdate): idx
             for idx, (code, _name) in enumerate(tickers)
         }
         for future in as_completed(future_to_idx):
@@ -153,7 +183,12 @@ def run(ticker_list_path: Path = DEFAULT_TICKER_LIST, output_dir: Path = DEFAULT
     tickers = load_ticker_list(ticker_list_path)
     print(f"[build_report] 종목 {len(tickers)}개 로드 완료 ({ticker_list_path})")
 
-    wb, failed_names = build_workbook(tickers, target)
+    available_dates = get_available_dates(ticker_list_path)
+    extended = target not in available_dates
+    if extended:
+        print("[build_report] 최근 5거래일 범위 밖 날짜라 장기 이력 소스로 전환 (기관/외국인 순매매량은 '-'로 표시됨)")
+
+    wb, failed_names = build_workbook(tickers, target, extended=extended)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"종가{target.month}-{target.day}.xlsx"

@@ -7,6 +7,7 @@ import time
 import requests
 
 INTEGRATION_URL = "https://m.stock.naver.com/api/stock/{code}/integration"
+LONG_CHART_URL = "https://api.stock.naver.com/chart/domestic/item/{code}"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 REQUEST_TIMEOUT = 10
 MAX_RETRIES = 2
@@ -43,6 +44,31 @@ def fetch_deal_trend(code: str) -> list[dict]:
     진짜 소진율이 필요하면 true_exhaustion_ratio()를 함께 써야 한다.
     """
     return fetch_integration(code).get("dealTrendInfos", [])
+
+
+def fetch_long_foreign_history(code: str) -> list[dict]:
+    """종목코드에 대한 장기(~110거래일) 종가/거래량/외국인보유율 이력을 반환한다.
+
+    이 엔드포인트(api.stock.naver.com)는 m.stock.naver.com의 integration API와
+    달리 기관/외국인 순매매량은 제공하지 않는다 — 종가/거래량/외국인보유율만 있다.
+    각 항목은 localDate(YYYYMMDD), closePrice, accumulatedTradingVolume,
+    foreignRetentionRate(숫자, % 기호 없음) 키를 가진다. 실패 시 빈 리스트.
+    """
+    url = LONG_CHART_URL.format(code=code)
+    params = {"periodType": "dayCandle", "additionalIndicatorType": "foreign"}
+    last_error: Exception | None = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("priceInfos", [])
+        except Exception as e:  # noqa: BLE001
+            last_error = e
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_BACKOFF_SEC * (attempt + 1))
+    print(f"[naver_client] {code} 장기 이력 조회 실패: {last_error}")
+    return []
 
 
 def find_row_for_date(deal_trend_infos: list[dict], bizdate: str) -> dict | None:

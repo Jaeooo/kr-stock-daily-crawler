@@ -13,7 +13,7 @@ import sys
 import threading
 from datetime import date
 from pathlib import Path
-from tkinter import Tk, StringVar, END, DISABLED, NORMAL
+from tkinter import Tk, Toplevel, StringVar, END, DISABLED, NORMAL
 from tkinter import ttk, messagebox
 from tkinter.scrolledtext import ScrolledText
 
@@ -80,6 +80,9 @@ class App:
         self.refresh_button = ttk.Button(date_frame, text="새로고침", command=self._start_date_fetch)
         self.refresh_button.pack(side="right")
 
+        self.calendar_button = ttk.Button(date_frame, text="📅 다른 날짜", command=self._open_date_picker)
+        self.calendar_button.pack(side="right", padx=(0, 6))
+
         self.update_button = ttk.Button(date_frame, text="업데이트 확인", command=self._start_update_check)
         self.update_button.pack(side="right", padx=(0, 6))
 
@@ -103,6 +106,7 @@ class App:
         state = DISABLED if busy else NORMAL
         self.refresh_button.configure(state=state)
         self.update_button.configure(state=state)
+        self.calendar_button.configure(state=state)
         for btn in self._date_buttons:
             btn.configure(state=state)
 
@@ -151,6 +155,47 @@ class App:
 
         self._set_busy(False)
         self.status_var.set("날짜를 선택해줘" if dates else "사용 가능한 날짜가 없어")
+
+    def _open_date_picker(self) -> None:
+        today = date.today()
+        dialog = Toplevel(self.root)
+        dialog.title("다른 날짜 선택")
+        dialog.configure(bg=BG)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(
+            dialog,
+            text="최근 5거래일보다 오래된 날짜야.\n기관/외국인 순매매량은 안 나오고(소스 없음),\n종가/거래량/외국인소진율만 나와.\n그 날짜 데이터가 없으면 전부 '-'로 나와.",
+            padding=10,
+            justify="left",
+        ).pack()
+
+        row = ttk.Frame(dialog, padding=(10, 0))
+        row.pack()
+        year_var = StringVar(value=str(today.year))
+        month_var = StringVar(value=str(today.month))
+        day_var = StringVar(value=str(today.day))
+        ttk.Spinbox(row, from_=2000, to=2100, width=6, textvariable=year_var).pack(side="left")
+        ttk.Label(row, text="년").pack(side="left", padx=(2, 8))
+        ttk.Spinbox(row, from_=1, to=12, width=4, textvariable=month_var).pack(side="left")
+        ttk.Label(row, text="월").pack(side="left", padx=(2, 8))
+        ttk.Spinbox(row, from_=1, to=31, width=4, textvariable=day_var).pack(side="left")
+        ttk.Label(row, text="일").pack(side="left", padx=(2, 0))
+
+        def confirm() -> None:
+            try:
+                picked = date(int(year_var.get()), int(month_var.get()), int(day_var.get()))
+            except ValueError:
+                messagebox.showerror("날짜 오류", "년/월/일을 올바르게 입력해줘.", parent=dialog)
+                return
+            dialog.destroy()
+            self._on_run(picked)
+
+        btn_row = ttk.Frame(dialog, padding=10)
+        btn_row.pack()
+        ttk.Button(btn_row, text="조회", command=confirm).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="취소", command=dialog.destroy).pack(side="left", padx=4)
 
     # ---------- 실행 ----------
 
